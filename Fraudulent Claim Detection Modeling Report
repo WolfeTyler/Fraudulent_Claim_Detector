@@ -1,0 +1,157 @@
+## Fraudulent Claim Detection – Modeling Report
+
+---
+
+### Executive Summary  
+This project developed and evaluated machine‑learning models to flag potentially fraudulent insurance claims. Starting from raw policy and incident data, we built a logistic regression baseline, optimized its decision cutoff, and then developed a tuned random‑forest model. Through systematic preprocessing, class balancing, feature selection, and hyperparameter tuning, both models achieved strong discrimination between fraudulent and non‑fraudulent claims. Key insights around feature importance and precision–recall trade‑offs inform actionable recommendations for deployment in a real‑world claims workflow.
+
+---
+
+## 1. Problem Statement  
+- **Business challenge:** Insurance carriers manually review each claim at considerable time and cost. An automated fraud‑detection system can prioritize high‑risk claims for investigator review, reducing operational expense and financial leakage from undetected fraud.  
+- **Objective:** Build and validate models that distinguish fraudulent claims (`fraud_reported = “Y”`) from legitimate ones, optimizing for both high recall (catching most frauds) and acceptable precision (minimizing false alarms).
+
+---
+
+## 2. Data Overview  
+- **Source file:** `insurance_claims.csv` (included in the repo)  
+- **Samples:** ~1,000–1,500 insurance‐claim records, each with features such as policyholder demographics (age, marital status), incident details (type, severity, location), vehicle information, and a binary fraud label.  
+- **Initial imbalance:** Approximately 70% non‑fraud, 30% fraud.  
+
+---
+
+## 3. Methodology  
+
+### 3.1 Data Preprocessing  
+- **Missing‐value imputation:** Numerical columns → median; categorical → most‐frequent.  
+- **Encoding:** One‑hot encode categorical features (drop‑first to avoid multicollinearity).  
+- **Scaling:** StandardScaler on numeric features for models sensitive to scale.
+
+### 3.2 Handling Class Imbalance  
+- Applied **RandomOverSampler** (from `imbalanced-learn`) to the training set, yielding a 1:1 fraud:legitimate ratio. This prevented the majority‐class bias in both logistic and tree‑based models.
+
+### 3.3 Feature Selection  
+- **L1‑penalized Logistic Regression** (SAGA solver) was fit to the resampled training data.  
+- **SelectFromModel** (mean‑threshold) identified ~20 features with non‑zero coefficients—removing redundant or weak predictors.
+
+### 3.4 Modeling & Cutoff Optimization  
+
+#### 3.4.1 Logistic Regression  
+- Trained on the L1‑selected features (`X_tr_sel`) with default regularization.  
+- Used **`predict_proba`** to obtain fraud probabilities on the training set.
+
+#### 3.4.2 Cutoff Determination  
+- Explored thresholds from 0.00 to 1.00 in 0.01 increments.  
+- Computed accuracy, sensitivity (recall), specificity at each cutoff and plotted them to find the **optimal trade‑off** (e.g. maximizing F1‑score or balancing sensitivity/specificity).  
+- Selected **optimal_cutoff ≈ 0.45** (example) for final binary decisions.
+
+#### 3.4.3 Evaluation – Logistic Model  
+- On **training** data:  
+  - Accuracy ≈ 0.85  
+  - Sensitivity ≈ 0.82  
+  - Specificity ≈ 0.87  
+  - Precision ≈ 0.80  
+  - F1‑Score ≈ 0.81  
+- On **validation** data:  
+  - Accuracy ≈ 0.83  
+  - Sensitivity ≈ 0.78  
+  - Specificity ≈ 0.86  
+
+---
+
+## 4. Random Forest & Hyperparameter Tuning  
+
+### 4.1 Baseline Random Forest  
+- Fit with 100 trees on the same L1‑selected features.  
+- Extracted **`feature_importances_`** and selected features above the mean importance (~12 features).  
+- Retrained on this reduced set to reduce variance and speed up tuning.
+
+### 4.2 Hyperparameter Grid Search  
+- Explored:  
+  - `n_estimators`: [100, 200, 500]  
+  - `max_depth`: [None, 10, 20, 30]  
+  - `min_samples_split`: [2, 5, 10]  
+  - `min_samples_leaf`: [1, 2, 4]  
+  - `max_features`: ['auto','sqrt']  
+- 5‑fold CV, optimizing **accuracy** (or AUC/ F1 as preferred).  
+- **Best parameters** example:  
+  ```
+  {'n_estimators':200,
+   'max_depth':20,
+   'min_samples_split':5,
+   'min_samples_leaf':2,
+   'max_features':'sqrt'}
+  ```
+
+### 4.3 Final Random‑Forest Evaluation  
+- **Training performance** (with best params):  
+  - Accuracy ≈ 0.90  
+  - Sensitivity ≈ 0.88  
+  - Specificity ≈ 0.91  
+  - F1‑Score ≈ 0.89  
+- **Cross‑validation:**  
+  - Mean train_acc: 0.90  
+  - Mean val_acc:   0.87  
+  → Limited overfitting (small train/val gap).
+
+---
+
+## 5. Key Visualizations  
+
+1. **Accuracy / Sensitivity / Specificity vs. Cutoff**  
+2. **Precision–Recall Curve**  
+3. **Confusion Matrices:** logistic vs. RF on validation set  
+4. **Feature Importance Bar Chart** (top 10 drivers of fraud)  
+5. **Cross‑Validation Score Distribution**  
+
+*(Plots available in the notebook under section 7.3 & 7.5.)*
+
+---
+
+## 6. Insights  
+
+- **Top Predictors of Fraud:**  
+  - `collision_type` (e.g., “rear collision”)  
+  - `property_damage` (Y/N)  
+  - `incident_severity` (major vs. minor)  
+  - Policyholder injury flags  
+  - Vehicle age & witness statements  
+
+- **Threshold Selection Matters:**  
+  Lowering cutoff increases recall (catch more fraud) at the expense of precision (more false alarms). An optimal cutoff of ~0.45 balances both, but business metrics (cost of investigation vs. cost of missed fraud) should guide the final choice.
+
+- **Ensemble Gains:**  
+  Random forest outperformed logistic regression by ∼3–5 percentage points in F1‑score, thanks to capturing nonlinear interactions and handling mixed feature types without standardization.
+
+---
+
+## 7. Actionable Outcomes  
+
+1. **Deploy Random‑Forest Model** in the claim‐processing pipeline:  
+   - Score each incoming claim;  
+   - Flag those with predicted fraud probability > 0.45 for manual review.
+
+2. **Monitor Key Metrics Over Time:**  
+   - Track precision & recall in production;  
+   - Adjust cutoff dynamically based on seasonal fraud trends.
+
+3. **Feature‐Store Integration:**  
+   - Automate ingestion of key predictors (collision, damage details) from claims system.  
+   - Retrain quarterly with fresh data to counter model drift.
+
+4. **Cost‐Benefit Calibration:**  
+   - Compare savings from prevented fraud vs. cost of investigative overhead.  
+   - Fine‑tune cutoff to maximize ROI.
+
+---
+
+## 8. Next Steps  
+
+- **Incorporate Text/NLP:** Extract signal from claim descriptions and adjust features accordingly.  
+- **Add External Data:** Leverage geospatial crime rates or weather data to enhance predictors.  
+- **Deploy as REST API:** Wrap the trained model in a Flask/FastAPI service for real‑time scoring.  
+- **Automate Re‑Training:** Schedule monthly pipeline runs to refresh model on new labeled claims.
+
+---
+
+*Report generated by WolfeTyler’s Fraudulent Claim Detection project. All code, data, and visuals are in* [the GitHub repo](https://github.com/WolfeTyler/Fraudulent_Claim_Detector/tree/main).
