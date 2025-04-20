@@ -47,4 +47,4 @@
 
 ## Contact
 
-Created by [@WolfeTyler](https://github.com/WolfeTyler). Feel free to open an issue or reach out with questions or feedback!  
+Created by [@WolfeTyler](https://github.com/WolfeTyler) and [@uvarajthulasiram](https://github.com/uvarajthulasiram). Feel free to open an issue or reach out with questions or feedback!  
